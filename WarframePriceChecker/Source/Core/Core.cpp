@@ -1,6 +1,8 @@
 #include "Core.hpp"
 
 #include <future>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -8,6 +10,9 @@
 #endif // !WIN32_LEAN_AND_MEAN
 
 #include <Windows.h>
+
+using namespace std;
+using namespace WarframeSnail;
 
 // -----------------------------------------------------------------------------
 const wchar_t* WarframeSnail::GetCurrentPath()
@@ -18,7 +23,7 @@ const wchar_t* WarframeSnail::GetCurrentPath()
         return current;
 
     if (!current)
-        throw std::bad_alloc();
+        throw bad_alloc();
     GetModuleFileName(NULL, current, MAX_PATH);
     wchar_t* lastSlash = wcsrchr(current, L'\\');
     *(lastSlash + 1) = L'\0';
@@ -30,18 +35,74 @@ const wchar_t* WarframeSnail::GetCurrentPath()
 //  ----------------------------------------------------------------------------
 void WarframeSnail::ExeOCROnPNG(wchar_t const* const pngPath)
 {
-    std::string cmd = {};
+    string cmd = {};
     cmd += "start ";
-    std::wstring wstrCurrent = GetCurrentPath();
-    std::string convertedStrCurrent(wstrCurrent.begin(), wstrCurrent.end());
+    wstring wstrCurrent = GetCurrentPath();
+    string convertedStrCurrent(wstrCurrent.begin(), wstrCurrent.end());
     cmd += convertedStrCurrent;
     cmd += "\\External\\Tesseract-OCR\\tesseract.exe ";
-    std::wstring wstrPngPath = pngPath;
-    std::string convertedStrPngPath(wstrPngPath.begin(), wstrPngPath.end());
+    wstring wstrPngPath = pngPath;
+    string convertedStrPngPath(wstrPngPath.begin(), wstrPngPath.end());
     cmd += convertedStrPngPath;
     cmd += " ";
     cmd += convertedStrCurrent;
     cmd += "\\Temp\\o";
 
-    std::async(system, cmd.c_str());
+    async(system, cmd.c_str());
 }
+
+// -----------------------------------------------------------------------------
+WarframeSnail::ItemEntry CreateEntryFromStr(wchar_t* str, const int& strSize)
+{
+    ItemEntry ie;
+
+    int i;
+    for (i = 0;
+        i < strSize &&
+        str[i] != L':';
+        ++i)
+    {
+    }
+
+    str[i++] = L'\0';
+    ie.ItemName = str;
+    try
+    {
+        ie.Price = stoi(&str[i]);
+    }
+    catch (...)
+    {
+        return ItemEntry::Empty();
+    }
+
+    return ie;
+}
+
+// -----------------------------------------------------------------------------
+std::vector<WarframeSnail::ItemEntry> WarframeSnail::ReadOCRResults(wchar_t const* const resultsPath)
+{
+    vector<ItemEntry> result = {};
+    wifstream file(resultsPath, ios_base::in);
+    if (!file.is_open())
+        throw invalid_argument("ReadOCRResults couldn't open the file");
+
+    constexpr int maxReadBuff = 256;
+    wchar_t* readBuff = new wchar_t[maxReadBuff];
+    while (!file.eof())
+    {
+        file.getline(readBuff, maxReadBuff);
+        if (readBuff[0] == L'\0')
+            continue;
+        
+        auto ie = CreateEntryFromStr(readBuff, maxReadBuff);
+        if (ie == ItemEntry::Empty())
+            result.push_back(std::move(ie));
+    }
+
+    file.close();
+    // filesystem::remove(resultsPath);
+
+    return result;
+}
+
+

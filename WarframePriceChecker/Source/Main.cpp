@@ -10,18 +10,20 @@
 
 int main()
 {
-	 WarframeSnail::ScreenCapture sc;
-
+	 // WarframeSnail::ScreenCapture sc;
+	 // 
 	 std::wstring wcur = WarframeSnail::GetCurrentPath();
 	 std::filesystem::create_directory(wcur + L"\\Temp\\");
-	 if (!sc.Capture()) throw;
-	 if (!sc.SaveImagePNG((LPTSTR)(wcur + L"\\Temp\\Temp.png").c_str())) throw;
-	 
-	 WarframeSnail::ExeOCROnPNG((wcur + L"\\Temp\\Temp.png").c_str());
-	 
-	 // CURL* myCurl;
-	 // myCurl = curl_easy_init();
-	 // curl_easy_cleanup(myCurl);
+	 // if (!sc.Capture()) throw;
+	 // if (!sc.SaveImagePNG((LPTSTR)(wcur + L"\\Temp\\Temp.png").c_str())) throw;
+	 // 
+	 // WarframeSnail::ExeOCROnPNG((wcur + L"\\Temp\\Temp.png").c_str());
+	 // 
+	 // // CURL* myCurl;
+	 // // myCurl = curl_easy_init();
+	 // // curl_easy_cleanup(myCurl);
+	 // 
+	 WarframeSnail::ReadOCRResults((wcur + L"\\Temp\\o.txt").c_str());
 
 	 wcur += L"\\Results\\";
 	 std::filesystem::create_directory(wcur);
