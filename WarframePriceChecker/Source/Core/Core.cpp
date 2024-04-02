@@ -96,7 +96,9 @@ std::vector<WarframeSnail::ItemEntry> WarframeSnail::ReadOCRResults(wchar_t cons
         
         auto ie = CreateEntryFromStr(readBuff, maxReadBuff);
         if (ie == ItemEntry::Empty())
-            result.push_back(std::move(ie));
+            continue;
+
+        result.push_back(std::move(ie));
     }
 
     file.close();
