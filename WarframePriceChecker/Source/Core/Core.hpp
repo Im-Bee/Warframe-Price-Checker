@@ -26,5 +26,15 @@ namespace WarframeSnail
 
 	void ExeOCROnPNG(wchar_t const* const pngPath);
 
-	std::vector<ItemEntry> ReadOCRResults(wchar_t const* const resultsPath);
+	void ExePy(wchar_t const* const pyPath, char const* const args);
+
+	const std::vector<std::pair<std::string, std::string>>& CreateDict();
+
+	/*
+	* Throws std::invalid_argument() if can't open the path */
+	std::vector<ItemEntry> ReadPythonResults(wchar_t const* const resultsPath);
+
+	/*
+	* Throws std::invalid_argument() if can't open the path */
+	std::string ReadOCRResultsForPython(wchar_t const* const resultsPath);
 }

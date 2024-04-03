@@ -1,5 +1,8 @@
 #include "Core.hpp"
 
+#include "LUL_Profiler.h"
+
+#include <algorithm>
 #include <future>
 #include <filesystem>
 #include <fstream>
@@ -14,9 +17,13 @@
 using namespace std;
 using namespace WarframeSnail;
 
+#define WS_IN_OUT_STR_SPACER ':'
+
 // -----------------------------------------------------------------------------
 const wchar_t* WarframeSnail::GetCurrentPath()
 {
+    LUL_PROFILER_TIMER_START();
+
     static bool init = false;
     static LPWSTR current = (LPWSTR)HeapAlloc(GetProcessHeap(), 0, sizeof(WCHAR) * MAX_PATH);
     if (init)
@@ -35,8 +42,10 @@ const wchar_t* WarframeSnail::GetCurrentPath()
 //  ----------------------------------------------------------------------------
 void WarframeSnail::ExeOCROnPNG(wchar_t const* const pngPath)
 {
+    LUL_PROFILER_TIMER_START();
+
     string cmd = {};
-    cmd += "start ";
+    // cmd += "start "; // For async execution
     wstring wstrCurrent = GetCurrentPath();
     string convertedStrCurrent(wstrCurrent.begin(), wstrCurrent.end());
     cmd += convertedStrCurrent;
@@ -48,39 +57,75 @@ void WarframeSnail::ExeOCROnPNG(wchar_t const* const pngPath)
     cmd += convertedStrCurrent;
     cmd += "\\Temp\\o";
 
-    async(system, cmd.c_str());
+    system(cmd.c_str());
+}
+
+// -----------------------------------------------------------------------------
+void WarframeSnail::ExePy(wchar_t const* const pyPath, char const* const args)
+{
+    LUL_PROFILER_TIMER_START();
+
+    string cmd = {};
+    cmd += "python3 ";
+    wstring wstrPyPath = pyPath;
+    string convertedStrPyPath(wstrPyPath.begin(), wstrPyPath.end());
+    cmd += convertedStrPyPath;
+    cmd += " ";
+    cmd += args;
+
+    system(cmd.c_str());
+}
+
+const std::vector<std::pair<std::string, std::string>>& WarframeSnail::CreateDict()
+{
+    static std::vector<std::pair<std::string, std::string>> r = {};
+    if (!r.empty())
+        return r;
+
+    return r;
 }
 
 // -----------------------------------------------------------------------------
 WarframeSnail::ItemEntry CreateEntryFromStr(wchar_t* str, const int& strSize)
 {
+    LUL_PROFILER_TIMER_START();
+
     ItemEntry ie;
 
-    int i;
-    for (i = 0;
-        i < strSize &&
-        str[i] != L':';
-        ++i)
+    constexpr int minVal = 0;
+    constexpr int maxVal = 10000;
+
+    wchar_t* i = wcsrchr(str, L':');
+    if (!i)
     {
+        return ItemEntry::Empty();
     }
 
-    str[i++] = L'\0';
+    *i = L'\0';
     ie.ItemName = str;
     try
     {
-        ie.Price = stoi(&str[i]);
+        ie.Price = stoi(i + 1);
     }
     catch (...)
     {
         return ItemEntry::Empty();
     }
 
+    if (ie.Price > maxVal ||
+        ie.Price < minVal)
+    {
+        ie.Price = 0;
+    }
+
     return ie;
 }
 
 // -----------------------------------------------------------------------------
-std::vector<WarframeSnail::ItemEntry> WarframeSnail::ReadOCRResults(wchar_t const* const resultsPath)
+std::vector<WarframeSnail::ItemEntry> WarframeSnail::ReadPythonResults(wchar_t const* const resultsPath)
 {
+    LUL_PROFILER_TIMER_START();
+
     vector<ItemEntry> result = {};
     wifstream file(resultsPath, ios_base::in);
     if (!file.is_open())
@@ -98,11 +143,107 @@ std::vector<WarframeSnail::ItemEntry> WarframeSnail::ReadOCRResults(wchar_t cons
         if (ie == ItemEntry::Empty())
             continue;
 
-        result.push_back(std::move(ie));
+        result.push_back(move(ie));
     }
 
     file.close();
-    // filesystem::remove(resultsPath);
+
+#ifndef _DEBUG
+    filesystem::remove(resultsPath);
+#endif // !_DEBUG
+
+    return result;
+}
+
+// -----------------------------------------------------------------------------
+std::string CreateStrFromStr(char* str, const int& strSize, bool& shouldBeCombined)
+{
+    LUL_PROFILER_TIMER_START();
+
+    string r = str;
+    // A vector with a pair of itmes.
+    // First item represents a string normalized for search
+    // Second a string normalized for output
+    const vector<pair<string, string>>& possibleItems = WarframeSnail::CreateDict(); 
+
+    r.erase(remove(r.begin(), r.end(), ' '), r.end());
+    for_each(r.begin(), r.end(), [](char& c)
+        {
+            return tolower(c);
+        });
+
+    int diff;
+    int smallestDiff = INT_MAX;
+    int iPossibleMatch = -1;
+    for (int i = 0; i < possibleItems.size(); ++i)
+    {
+        diff = r.compare(possibleItems[i].first);
+
+        if (diff == 0)
+        {
+            r = possibleItems[i].second;
+            break;
+        }
+        if (diff < smallestDiff)
+        {
+            smallestDiff = diff;
+            iPossibleMatch = i;
+        }
+    }
+
+    if (iPossibleMatch >= 0)
+        r = possibleItems[iPossibleMatch].second;
+
+    return r;
+}
+
+// -----------------------------------------------------------------------------
+std::string WarframeSnail::ReadOCRResultsForPython(wchar_t const* const resultsPath)
+{
+    LUL_PROFILER_TIMER_START();
+
+    string result = string();
+    ifstream file(resultsPath, ios_base::in);
+    if (!file.is_open())
+        throw invalid_argument("ReadOCRResults couldn't open the file");
+
+    constexpr int maxReadBuff = 512;
+    char* readBuff = new char[maxReadBuff];
+    string storeForLater = string();
+    bool shouldBeCombined = false;
+    while (!file.eof())
+    {
+        file.getline(readBuff, maxReadBuff);
+        if (readBuff[0] == L'\0')
+            continue;
+
+        auto rStr = CreateStrFromStr(readBuff, maxReadBuff, shouldBeCombined);
+        if (rStr.empty())
+        {
+            continue;
+        }
+        // Combine two lines together
+        if (shouldBeCombined)
+        {
+            storeForLater = rStr;
+        }
+        if (!storeForLater.empty())
+        {
+            rStr = storeForLater + '_' + rStr;
+            storeForLater = "";
+        }
+
+        // The "for python" part
+        result += move(rStr);
+        result += WS_IN_OUT_STR_SPACER;
+    }
+    delete[] readBuff;
+
+    file.close();
+
+#ifndef _DEBUG
+    filesystem::remove(resultsPath);
+#endif // !_DEBUG
 
     return result;
 }
